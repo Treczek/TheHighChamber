@@ -1,0 +1,10 @@
+name: POslowie
+dependencies:
+  - beautifulsoup4
+  - requests
+  - pymongo
+  - poppler
+  - pip
+  - pip:
+    - pdftotext
+    - mongoengine
