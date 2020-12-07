@@ -2,9 +2,13 @@ import requests
 import bs4 as bs
 import re
 import tempfile
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 import pdftotext
 from dateutil.parser import parse
+from time import perf_counter
+
+
 
 
 def get_all_pdf_links_from_url(url):
@@ -83,35 +87,44 @@ def clean_transcript_document(document):
     return document
 
 
+def find_last_politician_number(url):
+
+    web = requests.get(url + 'poslowie.xsp?type=A')
+    soup = bs.BeautifulSoup(web.content, 'html.parser')
+
+    all_links = [line.get_attribute_list("href") for line in soup.findAll("a")]
+
+    pattern = re.compile(r"posel\.xsp\?id=(?P<number>\d{3})")
+    for link in reversed(all_links):
+        if match := pattern.search(link[0]):
+            last_number = int(match.groupdict()['number'])
+            break
+
+    return last_number
+
+
 def extract_all_politician_info(government_n=9):
     url = rf'https://www.sejm.gov.pl/sejm{government_n}.nsf/'
     padding = lambda n: str(n).rjust(3, "0")
 
-    all_politics = dict()
-    politician_number = 1
-    while True:
-        try:
-            politician_url = url + rf'posel.xsp?id={padding(politician_number)}&type=A'
-            all_politics[politician_number] = scrape_politician_information(politician_url)
-            politician_number += 1
-        except StopIteration:
-            break
+    last_politician_number = find_last_politician_number(url)
+    with ThreadPoolExecutor() as executor:
+        futures = [executor.submit(scrape_politician_information,
+                                   url=url + rf'posel.xsp?id={padding(politician_number)}&type=A')
+                   for politician_number in range(1, last_politician_number+1)]
 
-    return all_politics
+    return [thread.result() for thread in as_completed(futures)]
 
 
 def scrape_politician_information(url):
-    politician_dict = dict()
-
+    politician_info = dict()
     web = requests.get(url)
     soup = bs.BeautifulSoup(web.content, 'html.parser')
 
-    politician_dict["name"] = soup.find("title").get_text()
+    politician_info["name"] = soup.find("title").get_text()
 
-    if not politician_dict["name"]:
+    if not politician_info["name"]:
         raise StopIteration("URL doesn't contain any politician data.")
-    else:
-        print(politician_dict["name"], "fetched.")
 
     features = []
     values = []
@@ -144,13 +157,13 @@ def scrape_politician_information(url):
 
     features = map(lambda feature: feature_map.get(feature, feature), features)
 
-    politician_dict.update(**dict(zip(features, values)))
+    politician_info.update(**dict(zip(features, values)))
     try:
-        politician_dict["email"] = soup.findAll("p")[-1].find("a").get("href")
+        politician_info["email"] = soup.findAll("p")[-1].find("a").get("href")
     except AttributeError:  # email is not available
         pass
 
-    return clean_politician_data(politician_dict)
+    return clean_politician_data(politician_info)
 
 
 def clean_politician_data(politician_dict):
