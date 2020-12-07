@@ -1,6 +1,6 @@
 import mongoengine as me
 
-from data.schemas.politician import Politician
+from src.data.schemas.politician import Politician
 
 
 class Speech(me.Document):
