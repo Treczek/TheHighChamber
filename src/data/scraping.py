@@ -1,19 +1,48 @@
-import requests
-import bs4 as bs
 import re
 import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+
+import bs4 as bs
 import pdftotext
+import requests
 from dateutil.parser import parse
-from time import perf_counter
+
+# TODO Znaleźć lepszy sposób na cięcie początku dokumentu
+# TODO Napisać wyrażenie regularne które będzie cięło stenogram na wypowiedzi posłów
 
 
+def scrape_politician_speeches(government_n):
+    url = fr'https://www.sejm.gov.pl/sejm{government_n}.nsf/stenogramy.xsp'
+    url_to_specific_years = get_stenogram_year_links(url)
+
+    all_pdfs = list()
+    for year_url in url_to_specific_years:
+        all_pdfs.extend(get_all_pdf_links_from_url(year_url))
+
+    for pdf_url in all_pdfs[1:5]:
+        process_pdf_stenogram(pdf_url)
+
+
+def process_pdf_stenogram(pdf_url):
+
+    pdf_text_in_pages = extract_text_from_pdf(pdf_url)
+    pdf_text = "\n".join([parse_stenogram_page(page) for page in pdf_text_in_pages])
+    cleaned_text = clean_transcript_document(pdf_text)
+    return cleaned_text
+
+
+def get_stenogram_year_links(url):
+    web = requests.get(url)
+    soup = bs.BeautifulSoup(web.content, "html.parser")
+    links = [line.get('href') for line in soup.find_all("a")]
+    pattern = re.compile(r"\?rok=\d{4}")
+    return [url + pattern.match(link).group() for link in links if pattern.match(link)]
 
 
 def get_all_pdf_links_from_url(url):
     web = requests.get(url)
-    soup = bs.BeautifulSoup(web.content, "lxml")
+    soup = bs.BeautifulSoup(web.content, "html.parser")
     all_links = [link.get('href') for link in soup.findAll('a')]
     return [link for link in all_links if link[-3:] == "pdf"]
 
@@ -26,10 +55,10 @@ def extract_text_from_pdf(pdf_url):
         with open(file.name, "rb") as pdf:
             pdf_text = pdftotext.PDF(pdf)
 
-    return "\n\n".join(pdf_text)
+    return pdf_text
 
 
-def parse_single_transcript_page(page_text):
+def parse_stenogram_page(page_text):
     pattern = re.compile(r'\s?\s?(?P<LEFT>.*?)\s{3}\s?(?P<RIGHT>.*)')
 
     left = list()
@@ -63,12 +92,13 @@ def parse_single_transcript_page(page_text):
             except AttributeError:
                 print('ParserError', line)
 
-    left.extend(right)
-
-    return left
+    return "\n".join([*left, *right])
 
 
 def clean_transcript_document(document):
+
+    document = document.split("\n")
+
     cut_the_introduction = lambda lines: lines[document.index("Otwieram posiedzenie Sejmu.") - 1:]
     document = " ".join(cut_the_introduction(document))
 
@@ -77,10 +107,9 @@ def clean_transcript_document(document):
         [
             (re.compile(r'\(.*?\)'), ""),  # parenthesis
             (re.compile(r'(\s\s*)'), " "),  # excessive_spaces
-            (re.compile(r'(\w+)- '), r"\1")
-        ]  # line breaking
+            (re.compile(r'(\w+)- '), r"\1")  # line breaking
+        ]
 
-    print(len(document))
     for pattern, repl in regexes:
         document = re.sub(pattern, repl, document)
 
@@ -212,10 +241,3 @@ def clean_politician_data(politician_dict):
     del politician_dict['place_and_date_of_brith']
 
     return politician_dict
-
-
-if __name__ == '__main__':
-    politicians = extract_all_politician_info()
-    import pprint
-
-    pprint.pprint(politicians)
