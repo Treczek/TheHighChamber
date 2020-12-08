@@ -20,8 +20,8 @@ def scrape_politician_speeches(government_n):
     for year_url in url_to_specific_years:
         all_pdfs.extend(get_all_pdf_links_from_url(year_url))
 
-    for pdf_url in all_pdfs[1:5]:
-        process_pdf_stenogram(pdf_url)
+    for pdf_url in all_pdfs:
+        print(process_pdf_stenogram(pdf_url))
 
 
 def process_pdf_stenogram(pdf_url):
@@ -90,7 +90,7 @@ def parse_stenogram_page(page_text):
                 left.append(left_part.strip(" "))
                 right.append(right_part.strip(" "))
             except AttributeError:
-                print('ParserError', line)
+                print('ParserError', len(line), line)
 
     return "\n".join([*left, *right])
 
@@ -99,8 +99,23 @@ def clean_transcript_document(document):
 
     document = document.split("\n")
 
-    cut_the_introduction = lambda lines: lines[document.index("Otwieram posiedzenie Sejmu.") - 1:]
-    document = " ".join(cut_the_introduction(document))
+    def cut_the_introduction(list_of_lines):
+        pattern = re.compile(r"^Marszałek:")
+        for ix, line in enumerate(document):
+            if pattern.search(line):
+                break
+        return list_of_lines[ix:]
+
+    def cut_the_end(list_of_lines):
+        pattern = re.compile(r'^Porządek dzienny*\)')
+        for ix, line in enumerate(reversed(list_of_lines)):
+            if pattern.search(line):
+                break
+        return list_of_lines[:-ix]
+
+    document = cut_the_introduction(document)
+    document = cut_the_end(document)
+    document = " ".join(document)
 
     # Regex replace patterns
     regexes = \
@@ -241,3 +256,7 @@ def clean_politician_data(politician_dict):
     del politician_dict['place_and_date_of_brith']
 
     return politician_dict
+
+
+if __name__ == '__main__':
+    scrape_politician_speeches(9)
