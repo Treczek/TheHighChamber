@@ -9,13 +9,15 @@ import bs4 as bs
 import requests
 from dateutil.parser import parse
 
+from src.utils import pickle_obj
+
 
 class Scraper:
     """
     Scraper base class
     """
 
-    def __init__(self, government_n=9):
+    def __init__(self, government_n=9, local_backup=False):
         """
         Creates instance of a Scraper
         Args:
@@ -24,14 +26,15 @@ class Scraper:
         """
         self.government_n = government_n
         self.root_url = fr'https://www.sejm.gov.pl/sejm{self.government_n}.nsf/'
+        self.local_backup = local_backup
 
 
 class SpeechesScraper(Scraper):
     """
     Scraper that crawl through all politician speeches urls and extracts text from stenograms.
     """
-    def __init__(self, government_n):
-        super().__init__(government_n)
+    def __init__(self, government_n, local_backup):
+        super().__init__(government_n, local_backup)
 
         self.speeches_url = self.root_url + r'/wypowiedzi.xsp'
 
@@ -52,8 +55,11 @@ class SpeechesScraper(Scraper):
         for thread in as_completed(futures):
             self.speeches += thread.result()
 
-        for politician_id, politician_name, politician_suffix in self._speeches_per_politician_url(self.speeches_url + '?view=3'):
-            self.speeches += self._scrape_all_speeches(id=politician_id, name=politician_name, suffix=politician_suffix)
+        if self.local_backup:
+            pickle_obj(self.speeches, "speeches.pickle")
+
+        # for politician_id, politician_name, politician_suffix in self._speeches_per_politician_url(self.speeches_url + '?view=3'):
+        #     self.speeches += self._scrape_all_speeches(id=politician_id, name=politician_name, suffix=politician_suffix)
 
     def _scrape_all_speeches(self, id, name, suffix):
         speeches = []
@@ -118,8 +124,8 @@ class SpeechesScraper(Scraper):
 
 class PoliticiansScraper(Scraper):
 
-    def __init__(self, government_n):
-        super().__init__(government_n)
+    def __init__(self, government_n, local_backup):
+        super().__init__(government_n, local_backup)
 
         self.politicians = []
 
@@ -144,6 +150,9 @@ class PoliticiansScraper(Scraper):
             except StopIteration:
                 break
             last_politician_number += 1
+
+        if self.local_backup:
+            pickle_obj(self.politicians, "politicians.pickle")
 
     def _find_last_politician_number(self):
         web = requests.get(self.root_url + 'poslowie.xsp?type=A')
@@ -254,10 +263,9 @@ class PoliticiansScraper(Scraper):
 
 
 if __name__ == '__main__':
-    # ps = PoliticiansScraper(government_n=9)
+    # ps = PoliticiansScraper(government_n=9, local_backup=True)
     # ps.scrape_politicians()
     # print(len(ps.politicians))
-
-    ss = SpeechesScraper(government_n=9)
+    ss = SpeechesScraper(government_n=9, local_backup=True)
     ss.scrape_politician_speeches()
     print(len(ss.speeches))
