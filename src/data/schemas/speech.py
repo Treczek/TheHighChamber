@@ -1,13 +1,10 @@
 import mongoengine as me
 
-from src.data.schemas.politician import Politician
 
-
-class Speech(me.Document):
+class Speech(me.EmbeddedDocument):
 
     date = me.DateTimeField()
-    politician = me.EmbeddedDocument(Politician, required=True)
-    text = me.StringField(required=True)
+    raw_text = me.StringField(required=True)
 
     meta = {
         'db_alias': 'core',
