@@ -1,4 +1,5 @@
 import mongoengine as me
+from .speech import Speech
 
 
 class Politician(me.Document):
@@ -20,11 +21,11 @@ class Politician(me.Document):
     number_of_votes = me.IntField()
     election_area_n = me.IntField()
 
-    previous_parliment_member = me.ListField()
+    parliment_member = me.ListField()
 
     email = me.EmailField()
 
-    speeches = me.ReferenceField('Speech')
+    speeches = me.EmbeddedDocumentListField(Speech)
 
     meta = {
         'db_alias': 'core',

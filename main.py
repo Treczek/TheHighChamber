@@ -1,14 +1,21 @@
 import argparse
 import logging
 from logging import config
-from src.data.scraping import PoliticiansScraper, SpeechesScraper
+from src.scraping.scraping import PoliticiansScraper, SpeechesScraper
+import src.data.mongo_setup as mongo_setup
 from ast import literal_eval
+from src.utils import get_project_structure
+
+STRUCTURE = get_project_structure()
 
 
 def main(command_line=None):
-
     # Load logging configuration
-    logging.config.fileConfig("logging.ini")
+    logging.config.fileConfig(STRUCTURE['root'].joinpath("logging.ini"),
+                              defaults={'logfilename': str(STRUCTURE["log_folder"])})
+
+    # Connecting to database
+    mongo_setup.global_init()
 
     parser = argparse.ArgumentParser(command_line)
     subparsers = parser.add_subparsers()
@@ -27,15 +34,20 @@ def main(command_line=None):
         getattr(subparser, 'add_argument')('-l', '--logging',
                                            choices=['debug', 'info', 'warning', 'error', 'critical'],
                                            default='info',
-                                           help="Specify main logger logging level")
+                                           help="Specify main logger logging level on StreamHandler")
     args = parser.parse_args(command_line)
 
     # Updating main logger logging level
-    logging.getLogger("main").setLevel(getattr(logging, args.logging.upper()))
+    log_level = getattr(logging, args.logging.upper())
+    main_log = logging.getLogger("main")
+    for handler in main_log.handlers:
+        if type(handler) == logging.StreamHandler:
+            handler.setLevel(log_level)
+    main_log.setLevel(log_level)
 
     if args.which == "scrape":
 
-        scraper_args = {'government_n': 9}
+        scraper_args = {'government_n': 9, 'local_backup': True, 'to_database': True}
         passed_scraper_args = {arg: literal_eval(value) for arg, value in args.scraper_arg}
         scraper_args.update(passed_scraper_args)
 
