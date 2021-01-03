@@ -2,7 +2,7 @@ import argparse
 import logging
 from logging import config
 from src.scraping.scraping import PoliticiansScraper, SpeechesScraper
-import src.data.mongo_setup as mongo_setup
+import src.mongo.mongo_setup as mongo_setup
 from ast import literal_eval
 from src.utils import get_project_structure
 
@@ -47,9 +47,13 @@ def main(command_line=None):
 
     if args.which == "scrape":
 
-        scraper_args = {'government_n': 9, 'local_backup': True, 'to_database': True}
-        passed_scraper_args = {arg: literal_eval(value) for arg, value in args.scraper_arg}
-        scraper_args.update(passed_scraper_args)
+        scraper_args = {'government_n': 9,
+                        'local_backup': True,
+                        'to_database': True,
+                        'name_filter': None}
+        if args.scraper_arg:
+            passed_scraper_args = {arg: literal_eval(value) for arg, value in args.scraper_arg}
+            scraper_args.update(passed_scraper_args)
 
         if args.action == "politicians" or args.action == "all":
             ps = PoliticiansScraper(**scraper_args)

@@ -2,9 +2,8 @@ name: POslowie
 dependencies:
   - beautifulsoup4
   - requests
-  - pymongo
-  - poppler
+  - pytest
   - pip
+  - python-dateutil==2.8.1
   - pip:
-    - pdftotext
     - mongoengine

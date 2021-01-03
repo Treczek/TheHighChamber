@@ -2,17 +2,18 @@
 This module contain scrapers that can extract data from the government website.
 """
 
+import logging
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
 
 import bs4 as bs
 import requests
 from dateutil.parser import parse
 
-from src.utils import pickle_obj, get_project_structure
-from src.data.schemas import Politician
-import logging
-
+from src.mongo.schemas import Politician
+from src.mongo.utils import create_speech_object, insert_speech_into_db, create_politician_object
+from src.utils import pickle_obj, get_project_structure, swap_name_with_surname
 
 STRUCTURE = get_project_structure()
 
@@ -22,7 +23,7 @@ class Scraper:
     Scraper base class
     """
 
-    def __init__(self, government_n, local_backup, to_database):
+    def __init__(self, government_n, to_database):
         """
         Creates instance of a Scraper
         Args:
@@ -35,7 +36,6 @@ class Scraper:
 
         self.government_n = government_n
         self.root_url = fr'https://www.sejm.gov.pl/sejm{self.government_n}.nsf/'
-        self.local_backup = local_backup
         self.to_database = to_database
 
 
@@ -43,10 +43,15 @@ class SpeechesScraper(Scraper):
     """
     Scraper that crawl through all politician speeches urls and extracts text from stenograms.
     """
-    def __init__(self, government_n, local_backup, to_database):
-        super().__init__(government_n, local_backup, to_database)
+    def __init__(self, government_n, to_database, only_new=True, name_filter=None):
+        super().__init__(government_n, to_database)
 
+        self.only_new = only_new
+        # self.last_update = find_last_speech_update()
         self.speeches_url = self.root_url + r'/wypowiedzi.xsp'
+
+        self.name_filter = name_filter
+        print(self.name_filter)
 
         # Namespace
         self.speeches = []
@@ -57,30 +62,32 @@ class SpeechesScraper(Scraper):
         """
 
         with ThreadPoolExecutor() as executor:
-            futures = [executor.submit(self._scrape_all_speeches,
-                                       id=politician_id, name=politician_name, suffix=politician_suffix)
-                       for politician_id, politician_name, politician_suffix
-                       in [['002', 'Adamczyk Rafał', r'?view=3&mowca=Adamczyk%20Rafał&id=002']]]
-                       # in self._speeches_per_politician_url(self.speeches_url + '?view=3')]
+            futures = [executor.submit(self._scrape_all_speeches, name=politician_name, suffix=politician_suffix)
+                       for politician_name, politician_suffix
+                       in self._speeches_per_politician_url(self.speeches_url + '?view=3')]
 
         for thread in as_completed(futures):
             self.speeches += thread.result()
 
-        if self.local_backup:
-            pickle_obj(self.speeches, STRUCTURE["backup"].joinpath("speeches.pickle"))
-            self.main_log.info(f"{len(self.speeches)} speeches pickled on local storage.")
-
-        # for politician_id, politician_name, politician_suffix in self._speeches_per_politician_url(self.speeches_url + '?view=3'):
-        #     self.speeches += self._scrape_all_speeches(id=politician_id, name=politician_name, suffix=politician_suffix)
-
-    def _scrape_all_speeches(self, id, name, suffix):
+    def _scrape_all_speeches(self, name, suffix):
         speeches = []
         counter = 0
         for speech_date, speech_url in self._iterate_through_speeches_in_politician_url(self.speeches_url + suffix):
-            speeches.append(
-                (id, name, speech_date, self._extract_text_from_speech(self.root_url + speech_url)))
-            counter += 1
-        self.main_log.debug(f"Scraped {counter} speeches of {name}")
+            try:
+                speeches.append(
+                    (name, speech_date, self._extract_text_from_speech(self.root_url + speech_url)))
+                counter += 1
+            except AttributeError:
+                continue
+
+        if self.to_database:
+            speeches_objs = [create_speech_object(*speech) for speech in speeches]
+            insert_results = [insert_speech_into_db(speech) for speech in speeches_objs]
+            self.mongo_log.info(f"Scraped {len(insert_results)} speeches of {name}. "
+                                f"Inserted into db: {sum(insert_results)}. "
+                                f"Duplicates: {len(insert_results) - sum(insert_results)}")
+        else:
+            self.main_log.info(f"Scraped {len(speeches)} speeches of {name}.")
 
         return speeches
 
@@ -90,11 +97,13 @@ class SpeechesScraper(Scraper):
 
         # Cleaning function that will be used will looping through parts of speech
         cleen_text = lambda speech_part: speech_part.get_text(strip='\xa0').replace("\r\n", "")
-
-        speech = " ".join(
-            [cleen_text(speech_part)
-             for speech_part in soup.find("div", {"class": "stenogram"}).findAll("p")[1:]])
-
+        try:
+            speech = " ".join(
+                [cleen_text(speech_part)
+                 for speech_part in soup.find("div", {"class": "stenogram"}).findAll("p")[1:]])
+        except AttributeError:
+            logging.getLogger("main").error(f"Błąd na stronie: {url}.")
+            raise
         return speech
 
     def _iterate_through_speeches_in_politician_url(self, url):
@@ -118,15 +127,14 @@ class SpeechesScraper(Scraper):
                 except IndexError:
                     continue
 
-    @staticmethod
-    def _speeches_per_politician_url(url):
+    def _speeches_per_politician_url(self, url):
         soup = bs.BeautifulSoup(requests.get(url).content, features="html.parser")
         for politician in soup.find('ul', {'class': "category-list"}).find_all("li"):
             for tag in politician:
                 if link := tag.get_attribute_list("href")[0]:
-                    politician_id = link[-3:]
                     politician_name = tag.get_text()
-                    yield politician_id, politician_name, link
+                    if not self.name_filter or self.name_filter in (politician_name, swap_name_with_surname(politician_name)):
+                        yield politician_name, link
 
 
 class PoliticiansScraper(Scraper):
@@ -167,22 +175,9 @@ class PoliticiansScraper(Scraper):
             self.main_log.info(f"{len(self.politicians)} politicians pickled to 'data' folder")
 
         if self.to_database:
-            self.politicians = [self.create_politicians_objects(politician) for politician in self.politicians]
+            self.politicians = [create_politician_object(politician) for politician in self.politicians]
             Politician.objects.insert(self.politicians)
             self.mongo_log.info(f"{len(self.politicians)} politicians inserted to database")
-
-    def create_politicians_objects(self, politician):
-        """
-        This function will create Politician object and save it to the mongo db
-        Args:
-            politician: dictionary of single politician scraped from government website
-        """
-        p = Politician()
-        for key, value in politician.items():
-            setattr(p, key, value)
-
-        self.mongo_log.debug(f"Politician {p.name} has been created and ready to be inserted to db")
-        return p
 
     def _find_last_politician_number(self):
         web = requests.get(self.root_url + 'poslowie.xsp?type=A')
@@ -195,7 +190,6 @@ class PoliticiansScraper(Scraper):
             if match := pattern.search(link[0]):
                 last_number = int(match.groupdict()['number'])
                 break
-
         return last_number
 
     def _scrape_single_politician(self, url):
@@ -261,6 +255,7 @@ class PoliticiansScraper(Scraper):
             date_of_birth, place_of_birth = value.split(", ")
             politician_dict['place_of_birth'] = place_of_birth
             politician_dict['date_of_birth'] = parse(date_of_birth)
+            politician_dict['age'] = (datetime.now() - politician_dict['date_of_birth']).days // 365
 
         def assemble_email(value):
 
@@ -275,13 +270,22 @@ class PoliticiansScraper(Scraper):
 
             return value.lower()
 
+        def extract_sex_from_name(value):
+            politician_dict['sex'] = "woman" if value.split(" ")[0].endswith("a") else "man"
+            return value
+
+        def parse_parliment_member(value):
+            previous_parliments = re.findall(r'([XVI]+)', value) or []
+            return list(set(previous_parliments + ["IX"]))
+
         transform = {
             'election_date': lambda value: parse(value),
             'election_area': parse_election_area,
             'oath_date': lambda value: parse(value),
-            'parliment_member': lambda value: re.findall(r'([XVI]+)', value).extend("IX") or [],
+            'parliment_member': parse_parliment_member,
             'place_and_date_of_brith': parse_place_and_date_of_birth,
-            'email': assemble_email
+            'email': assemble_email,
+            'name': extract_sex_from_name
         }
 
         for feature, value in list(politician_dict.items()):  # We are changing the dictionary while looping
@@ -300,4 +304,4 @@ class PoliticiansScraper(Scraper):
 if __name__ == '__main__':
     from main import main
 
-    main(["scrape", "speeches", '-l', 'debug', '-s', 'to_database', 'False'])
+    main(["scrape", "politicians", '-l', 'debug', '-s', 'to_database', 'False'])
