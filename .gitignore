@@ -7,7 +7,6 @@
 .idea/sonarlint/
 .idea/vcs.xml
 .ipynb_checkpoints/
-Mongo/
-src/data/.ipynb_checkpoints/
-src/data/__pycache__/
+src/mongo/.ipynb_checkpoints/
+src/mongo/__pycache__/
 scraper_prototype.ipynb

@@ -3,5 +3,5 @@
 
 def swap_name_with_surname(full_name):
     name_parts = full_name.split(" ")
-    swapped_full_name = list(name_parts[:] + [name_parts[0]])
+    swapped_full_name = list(name_parts[1:] + [name_parts[0]])
     return " ".join(swapped_full_name)
