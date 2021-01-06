@@ -12,8 +12,8 @@ import requests
 from dateutil.parser import parse
 
 from src.mongo.schemas import Politician
-from src.mongo.utils import create_speech_object, insert_speech_into_db, create_politician_object
-from src.utils import pickle_obj, get_project_structure, swap_name_with_surname
+import src.mongo.utils as dbutils
+from src.utils import get_project_structure, swap_name_with_surname
 
 STRUCTURE = get_project_structure()
 
@@ -47,11 +47,11 @@ class SpeechesScraper(Scraper):
         super().__init__(government_n, to_database)
 
         self.only_new = only_new
-        # self.last_update = find_last_speech_update()
         self.speeches_url = self.root_url + r'/wypowiedzi.xsp'
-
         self.name_filter = name_filter
-        print(self.name_filter)
+
+        if only_new:
+            setattr(self, "last_speech", dbutils.get_last_speech_per_politician())
 
         # Namespace
         self.speeches = []
@@ -70,19 +70,20 @@ class SpeechesScraper(Scraper):
             self.speeches += thread.result()
 
     def _scrape_all_speeches(self, name, suffix):
+
         speeches = []
-        counter = 0
         for speech_date, speech_url in self._iterate_through_speeches_in_politician_url(self.speeches_url + suffix):
+            if self.only_new and speech_date <= self.last_speech.get(name, datetime(1990, 12, 4)):
+                continue
             try:
                 speeches.append(
                     (name, speech_date, self._extract_text_from_speech(self.root_url + speech_url)))
-                counter += 1
             except AttributeError:
                 continue
 
         if self.to_database:
-            speeches_objs = [create_speech_object(*speech) for speech in speeches]
-            insert_results = [insert_speech_into_db(speech) for speech in speeches_objs]
+            speeches_objs = [dbutils.create_speech_object(*speech) for speech in speeches]
+            insert_results = [dbutils.insert_speech_into_db(speech) for speech in speeches_objs]
             self.mongo_log.info(f"Scraped {len(insert_results)} speeches of {name}. "
                                 f"Inserted into db: {sum(insert_results)}. "
                                 f"Duplicates: {len(insert_results) - sum(insert_results)}")
@@ -132,15 +133,15 @@ class SpeechesScraper(Scraper):
         for politician in soup.find('ul', {'class': "category-list"}).find_all("li"):
             for tag in politician:
                 if link := tag.get_attribute_list("href")[0]:
-                    politician_name = tag.get_text()
+                    politician_name = swap_name_with_surname(tag.get_text())
                     if not self.name_filter or self.name_filter in (politician_name, swap_name_with_surname(politician_name)):
                         yield politician_name, link
 
 
 class PoliticiansScraper(Scraper):
 
-    def __init__(self, government_n, local_backup, to_database):
-        super().__init__(government_n, local_backup, to_database)
+    def __init__(self, government_n, to_database):
+        super().__init__(government_n, to_database)
 
         self.politicians = []
 
@@ -170,12 +171,10 @@ class PoliticiansScraper(Scraper):
             self.main_log.info(f"Found additional hidden politician: {self.politicians[-1]['name']}")
             last_politician_number += 1
 
-        if self.local_backup:
-            pickle_obj(self.politicians, STRUCTURE["backup"].joinpath("politicians.pickle"))
-            self.main_log.info(f"{len(self.politicians)} politicians pickled to 'data' folder")
+
 
         if self.to_database:
-            self.politicians = [create_politician_object(politician) for politician in self.politicians]
+            self.politicians = [dbutils.create_politician_object(politician) for politician in self.politicians]
             Politician.objects.insert(self.politicians)
             self.mongo_log.info(f"{len(self.politicians)} politicians inserted to database")
 
@@ -304,4 +303,4 @@ class PoliticiansScraper(Scraper):
 if __name__ == '__main__':
     from main import main
 
-    main(["scrape", "politicians", '-l', 'debug', '-s', 'to_database', 'False'])
+    main(["scrape", "speeches", '-l', 'debug', '-s', 'to_database', 'False', '-s', 'only_new', 'True'])

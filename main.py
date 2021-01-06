@@ -48,9 +48,10 @@ def main(command_line=None):
     if args.which == "scrape":
 
         scraper_args = {'government_n': 9,
-                        'local_backup': True,
                         'to_database': True,
-                        'name_filter': None}
+                        'name_filter': None,
+                        'only_new': True}
+
         if args.scraper_arg:
             passed_scraper_args = {arg: literal_eval(value) for arg, value in args.scraper_arg}
             scraper_args.update(passed_scraper_args)

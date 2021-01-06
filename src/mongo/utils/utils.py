@@ -81,3 +81,15 @@ def insert_speech_into_db(speech: Speech):
     else:
         logging.getLogger("main.mongo").debug(f"Speech of {p.name} from {str(speech.date)} already in the database.")
         return False
+
+
+def get_last_speech_per_politician():
+
+    result = list(Politician.objects().aggregate(
+        [
+            {'$unwind': "$speeches"},
+            {'$group': {'_id': '$name', 'last_speech': {'$max': '$speeches.date'}}}
+        ]
+    ))
+
+    return {dct["_id"]: dct["last_speech"] for dct in result}
