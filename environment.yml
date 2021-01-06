@@ -1,0 +1,9 @@
+name: POslowie
+dependencies:
+  - beautifulsoup4
+  - requests
+  - pytest
+  - pip
+  - python-dateutil==2.8.1
+  - pip:
+    - mongoengine

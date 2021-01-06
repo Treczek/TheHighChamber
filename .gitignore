@@ -1,0 +1,12 @@
+.idea/.gitignore
+.idea/.name
+.idea/POslowie.iml
+.idea/inspectionProfiles/
+.idea/misc.xml
+.idea/modules.xml
+.idea/sonarlint/
+.idea/vcs.xml
+.ipynb_checkpoints/
+src/mongo/.ipynb_checkpoints/
+src/mongo/__pycache__/
+scraper_prototype.ipynb
