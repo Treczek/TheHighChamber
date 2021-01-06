@@ -55,7 +55,7 @@ def create_speech_object(politician_name, speech_date, speech_text):
     return s
 
 
-def create_politician_object(politician):
+def insert_politician_to_db(politician):
     """
     This function will create Politician object and save it to the mongo db
     Args:
@@ -67,20 +67,22 @@ def create_politician_object(politician):
 
     p.hash = p.generate_id()
 
-    logging.getLogger("main.mongo").debug(f"Politician {p.name} has been created and ready to be inserted to db")
+    if Politician.objects(hash=p.hash).first():
+        logging.getLogger("main.mongo").debug(f"Politician {p.name} found in the database. Skipping.")
+        return False
 
-    return p
+    p.save()
+    logging.getLogger("main.mongo").debug(f"Politician {p.name} inserted to db")
+    return True
 
 
 def insert_speech_into_db(speech: Speech):
     p = Politician.objects(hash=speech.politician_id).first()
-    if speech.hash not in [db_speech["hash"] for db_speech in p.speeches]:
+    if p and speech.hash not in [db_speech["hash"] for db_speech in p.speeches]:
         p.speeches.append(speech)
         p.save()
         return True
-    else:
-        logging.getLogger("main.mongo").debug(f"Speech of {p.name} from {str(speech.date)} already in the database.")
-        return False
+    return False
 
 
 def get_last_speech_per_politician():

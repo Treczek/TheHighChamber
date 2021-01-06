@@ -73,7 +73,7 @@ class SpeechesScraper(Scraper):
 
         speeches = []
         for speech_date, speech_url in self._iterate_through_speeches_in_politician_url(self.speeches_url + suffix):
-            if self.only_new and speech_date <= self.last_speech.get(name, datetime(1990, 12, 4)):
+            if self.only_new and speech_date < self.last_speech.get(name, datetime(1900, 1, 1)):
                 continue
             try:
                 speeches.append(
@@ -84,16 +84,16 @@ class SpeechesScraper(Scraper):
         if self.to_database:
             speeches_objs = [dbutils.create_speech_object(*speech) for speech in speeches]
             insert_results = [dbutils.insert_speech_into_db(speech) for speech in speeches_objs]
-            self.mongo_log.info(f"Scraped {len(insert_results)} speeches of {name}. "
-                                f"Inserted into db: {sum(insert_results)}. "
-                                f"Duplicates: {len(insert_results) - sum(insert_results)}")
+            if any(insert_results):
+                self.mongo_log.info(f"Inserted {sum(insert_results)} speeches of {name} into db.")
         else:
-            self.main_log.info(f"Scraped {len(speeches)} speeches of {name}.")
+            if speeches:
+                self.main_log.info(f"Scraped {len(speeches)} speeches of {name}.")
 
         return speeches
 
-    @staticmethod
-    def _extract_text_from_speech(url):
+
+    def _extract_text_from_speech(self, url, repeat=True):
         soup = bs.BeautifulSoup(requests.get(url).content, features="html.parser")
 
         # Cleaning function that will be used will looping through parts of speech
@@ -103,8 +103,11 @@ class SpeechesScraper(Scraper):
                 [cleen_text(speech_part)
                  for speech_part in soup.find("div", {"class": "stenogram"}).findAll("p")[1:]])
         except AttributeError:
-            logging.getLogger("main").error(f"Błąd na stronie: {url}.")
-            raise
+            if repeat:
+                speech = self._extract_text_from_speech(url, repeat=False)
+            else:
+                logging.getLogger("main").error(f"Błąd na stronie: {url}.")
+                raise
         return speech
 
     def _iterate_through_speeches_in_politician_url(self, url):
@@ -140,7 +143,7 @@ class SpeechesScraper(Scraper):
 
 class PoliticiansScraper(Scraper):
 
-    def __init__(self, government_n, to_database):
+    def __init__(self, government_n, to_database, **kwargs):
         super().__init__(government_n, to_database)
 
         self.politicians = []
@@ -171,12 +174,9 @@ class PoliticiansScraper(Scraper):
             self.main_log.info(f"Found additional hidden politician: {self.politicians[-1]['name']}")
             last_politician_number += 1
 
-
-
         if self.to_database:
-            self.politicians = [dbutils.create_politician_object(politician) for politician in self.politicians]
-            Politician.objects.insert(self.politicians)
-            self.mongo_log.info(f"{len(self.politicians)} politicians inserted to database")
+            insert_results = [dbutils.insert_politician_to_db(politician) for politician in self.politicians]
+            self.mongo_log.info(f"{sum(insert_results)} politicians inserted to database")
 
     def _find_last_politician_number(self):
         web = requests.get(self.root_url + 'poslowie.xsp?type=A')
@@ -269,8 +269,15 @@ class PoliticiansScraper(Scraper):
 
             return value.lower()
 
-        def extract_sex_from_name(value):
+        def work_with_name(value):
+
+            encoding_problems = {'Å›': "ś", 'Å„': "ń", 'Å‚': 'ł'}
+            if any(key in value for key in encoding_problems):
+                for key, val in encoding_problems.items():
+                    value = value.replace(key, val)
+
             politician_dict['sex'] = "woman" if value.split(" ")[0].endswith("a") else "man"
+
             return value
 
         def parse_parliment_member(value):
@@ -284,7 +291,7 @@ class PoliticiansScraper(Scraper):
             'parliment_member': parse_parliment_member,
             'place_and_date_of_brith': parse_place_and_date_of_birth,
             'email': assemble_email,
-            'name': extract_sex_from_name
+            'name': work_with_name
         }
 
         for feature, value in list(politician_dict.items()):  # We are changing the dictionary while looping
@@ -303,4 +310,4 @@ class PoliticiansScraper(Scraper):
 if __name__ == '__main__':
     from main import main
 
-    main(["scrape", "speeches", '-l', 'debug', '-s', 'to_database', 'False', '-s', 'only_new', 'True'])
+    main(["scrape", "politicians", '-l', 'debug', '-s', 'government_n', '8', '-s', 'to_database', 'True'])

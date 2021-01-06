@@ -22,7 +22,7 @@ class Politician(me.Document):
     election_date = me.DateTimeField()
     oath_date = me.DateTimeField()
     date_of_birth = me.DateTimeField(required=True)
-    age = me.IntField(required=True, min_value=18)
+    age = me.IntField()
 
     number_of_votes = me.IntField()
     election_area_n = me.IntField()
