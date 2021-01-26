@@ -11,6 +11,7 @@ class Speech(me.EmbeddedDocument):
 
     date = me.DateTimeField()
     raw_text = me.StringField(required=True)
+    speech_details = me.ListField()
 
     def generate_id(self):
         bk = blake2b(digest_size=8)

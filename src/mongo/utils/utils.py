@@ -1,13 +1,25 @@
-import warnings
 import logging
+import warnings
+from json import JSONEncoder
+import itertools
 
+from bson.json_util import default
+from mongoengine import Document
+
+from src.exceptions import NoPoliticianFound, DuplicatedNameWarning
 from src.mongo.schemas import Politician, Speech
 from src.utils import swap_name_with_surname
-from src.exceptions import NoPoliticianFound, DuplicatedNameWarning
+
+
+class MongoEncoder(JSONEncoder):
+    def default(self, o):
+        if isinstance(o, Document):
+            return o.to_mongo()
+        return default(o)
 
 
 # TODO TESTS
-def find_politician_by_name(name, try_swapped=True):
+def get_politician_by_name(name, try_swapped=True):
 
     """
     Args:
@@ -21,7 +33,7 @@ def find_politician_by_name(name, try_swapped=True):
     if len(p := Politician.objects(name=name)) > 1:
         warnings.warn(f"{name} appears more then once in the politician collection", DuplicatedNameWarning)
     elif len(p) == 0 and try_swapped:
-        return find_politician_by_name(swap_name_with_surname(name), try_swapped=False)
+        return get_politician_by_name(swap_name_with_surname(name), try_swapped=False)
     else:
         try:
             return p.first()
@@ -46,7 +58,7 @@ def create_speech_object(politician_name, speech_date, speech_text):
     s.raw_text = speech_text
     s.hash = s.generate_id()
 
-    p = find_politician_by_name(politician_name)
+    p = get_politician_by_name(politician_name)
     if p:
         s.politician_id = p.hash
     else:
@@ -95,3 +107,44 @@ def get_last_speech_per_politician():
     ))
 
     return {dct["_id"]: dct["last_speech"] for dct in result}
+
+
+def get_speech_from_hash(speech_hash):
+
+    all_speeches_per_politician = Politician.objects.scalar('speeches')
+    for speech in itertools.chain.from_iterable(all_speeches_per_politician):
+        print(speech.hash)
+        if speech.hash == speech_hash:
+            "Speech found, we can brak the for loop and return the object"
+            break
+    else:
+        error_msg = "There is no speech with hash " + speech_hash
+        logging.getLogger('mongo').error(error_msg)
+        raise AttributeError(error_msg)
+
+    return speech
+
+
+def get_all_speeches():
+
+    result = list(Politician.objects().aggregate(
+        [
+            {'$unwind': "$speeches"},
+            {'$project': {'speech_hash': '$speeches.hash',
+                          'name': '$name',
+                          'speech': '$speeches.raw_text'}}
+        ]
+    ))
+
+    return result
+
+
+def update_speech(speech_obj):
+    """
+    This function can be used to find specific speech in the db and update it with the json object
+    Args:
+        speech_obj: Speech document that will update existing one in the database. It should have a hash to easily
+         identify find it.
+    """
+
+
