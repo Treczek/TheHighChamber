@@ -20,7 +20,6 @@ class MongoEncoder(JSONEncoder):
 
 # TODO TESTS
 def get_politician_by_name(name, try_swapped=True):
-
     """
     Args:
         name: politician name
@@ -98,7 +97,6 @@ def insert_speech_into_db(speech: Speech):
 
 
 def get_last_speech_per_politician():
-
     result = list(Politician.objects().aggregate(
         [
             {'$unwind': "$speeches"},
@@ -110,10 +108,8 @@ def get_last_speech_per_politician():
 
 
 def get_speech_from_hash(speech_hash):
-
     all_speeches_per_politician = Politician.objects.scalar('speeches')
     for speech in itertools.chain.from_iterable(all_speeches_per_politician):
-        print(speech.hash)
         if speech.hash == speech_hash:
             "Speech found, we can brak the for loop and return the object"
             break
@@ -125,10 +121,14 @@ def get_speech_from_hash(speech_hash):
     return speech
 
 
-def get_all_speeches():
+def get_all_speeches(filter_query=None):
+
+    if filter_query is None:
+        filter_query = {}
 
     result = list(Politician.objects().aggregate(
         [
+            {'$match': filter_query},
             {'$unwind': "$speeches"},
             {'$project': {'speech_hash': '$speeches.hash',
                           'name': '$name',
@@ -139,12 +139,33 @@ def get_all_speeches():
     return result
 
 
-def update_speech(speech_obj):
+def update_speech(speech_hash, field_name, field_value):
     """
-    This function can be used to find specific speech in the db and update it with the json object
+    This function can be used to find specific speech in the db and update it with the given value
     Args:
-        speech_obj: Speech document that will update existing one in the database. It should have a hash to easily
-         identify find it.
+        speech_hash: hash which will be used to identify the speech
+        field_name: name of the speech field that will be changed
+        field_value: value for the given field. Type must be allowed by mongoDB
+    Returns: None. Updates the speech in the database
     """
 
+    # Mongoengine struggles with the updating of nested documents. The easiest way would be to use exec_js method but it
+    # doesnt work with mongo > 4.0.
+    # We will use private method to grab the collection object and use pymongo instead.
 
+    politician = Politician._get_collection()
+
+    filter_query = \
+        {'speeches': {'$elemMatch': {'hash': speech_hash}}} \
+        if only_new \
+        else {'speeches': {'$elemMatch': {'hash': speech_hash, field_name: {'$exists': False}}}}
+
+    result = politician.update_one(
+        filter=filter_query,
+        update={"$set": {f"speeches.$[element].{field_name}": field_value}},
+        array_filters=[{'element.hash': speech_hash}])
+
+    if result.matched_count:
+        logging.getLogger('mongo').debug(f"Speech with hash: {speech_hash} updated on field {field_name}")
+    else:
+        logging.getLogger('mongo').debug(f"Speech with hash: {speech_hash} not found in the database")

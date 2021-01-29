@@ -2,6 +2,7 @@ import argparse
 import logging
 from logging import config
 from src.scraping.scraping import PoliticiansScraper, SpeechesScraper
+from src.text_processing.tokenizer import extract_speech_details
 import src.mongo.mongo_setup as mongo_setup
 from ast import literal_eval
 from src.utils import get_project_structure
