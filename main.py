@@ -31,7 +31,13 @@ def main(command_line=None):
 
     scrape_parser.set_defaults(which="scrape")
 
-    for subparser in [scrape_parser]:
+    data_preparation_parser = subparsers.add_parser("data_preparation", help="Extracting various features from scraped"
+                                                                             "speeches including embeddings and token"
+                                                                             "details.")
+    data_preparation_parser.set_defaults(which="data_preparation")
+    data_preparation_parser.add_argument("--recreate_all", action="store_true")
+
+    for subparser in [scrape_parser, data_preparation_parser]:
         getattr(subparser, 'add_argument')('-l', '--logging',
                                            choices=['debug', 'info', 'warning', 'error', 'critical'],
                                            default='info',
@@ -64,6 +70,9 @@ def main(command_line=None):
         if args.action == "speeches" or args.action == "all":
             ss = SpeechesScraper(**scraper_args)
             ss.scrape_politician_speeches()
+
+    if args.which == "data_preparation":
+        extract_speech_details(only_new=args.recreate_all)
 
 
 if __name__ == '__main__':
