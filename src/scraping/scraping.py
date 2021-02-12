@@ -43,6 +43,7 @@ class SpeechesScraper(Scraper):
     """
     Scraper that crawl through all politician speeches urls and extracts text from stenograms.
     """
+
     def __init__(self, government_n, to_database, only_new=True, name_filter=None):
         super().__init__(government_n, to_database)
 
@@ -51,7 +52,8 @@ class SpeechesScraper(Scraper):
         self.name_filter = name_filter
 
         if only_new:
-            setattr(self, "last_speech", dbutils.get_last_speech_per_politician())
+            setattr(self, "last_speech",
+                    dbutils.get_last_speech_per_politician())
 
         # Namespace
         self.speeches = []
@@ -82,22 +84,27 @@ class SpeechesScraper(Scraper):
                 continue
 
         if self.to_database:
-            speeches_objs = [dbutils.create_speech_object(*speech) for speech in speeches]
-            insert_results = [dbutils.insert_speech_into_db(speech) for speech in speeches_objs]
+            speeches_objs = [dbutils.create_speech_object(
+                *speech) for speech in speeches]
+            insert_results = [dbutils.insert_speech_into_db(
+                speech) for speech in speeches_objs]
             if any(insert_results):
-                self.mongo_log.info(f"Inserted {sum(insert_results)} speeches of {name} into db.")
+                self.mongo_log.info(
+                    f"Inserted {sum(insert_results)} speeches of {name} into db.")
         else:
             if speeches:
-                self.main_log.info(f"Scraped {len(speeches)} speeches of {name}.")
+                self.main_log.info(
+                    f"Scraped {len(speeches)} speeches of {name}.")
 
         return speeches
 
-
     def _extract_text_from_speech(self, url, repeat=True):
-        soup = bs.BeautifulSoup(requests.get(url).content, features="html.parser")
+        soup = bs.BeautifulSoup(requests.get(
+            url).content, features="html.parser")
 
         # Cleaning function that will be used will looping through parts of speech
-        cleen_text = lambda speech_part: speech_part.get_text(strip='\xa0').replace("\r\n", "")
+        def cleen_text(speech_part): return speech_part.get_text(
+            strip='\xa0').replace("\r\n", "")
         try:
             speech = " ".join(
                 [cleen_text(speech_part)
@@ -111,28 +118,34 @@ class SpeechesScraper(Scraper):
         return speech
 
     def _iterate_through_speeches_in_politician_url(self, url):
-        soup = bs.BeautifulSoup(requests.get(url).content, features="html.parser")
+        soup = bs.BeautifulSoup(requests.get(
+            url).content, features="html.parser")
         pages = []
         if not (page_navigation := soup.findAll("ul", {"class": "pagination"})):
             pages.append(url)
         else:
             for page_tag in page_navigation[0].findAll("li")[1:-1]:
-                pages.append(self.speeches_url + page_tag.findChild().get_attribute_list("href")[0].replace(" ", '%20'))
+                pages.append(
+                    self.speeches_url + page_tag.findChild().get_attribute_list("href")[0].replace(" ", '%20'))
 
         for page_url in pages:
-            soup = bs.BeautifulSoup(requests.get(page_url).content, features="html.parser")
-            table = soup.find('table', {'class': "table border-bottom lista-wyp"})
+            soup = bs.BeautifulSoup(requests.get(
+                page_url).content, features="html.parser")
+            table = soup.find(
+                'table', {'class': "table border-bottom lista-wyp"})
 
             for row in table.findAll("tr")[1:]:
                 try:
                     speech_date = row.find("td", {"class": "nobr"}).get_text()
-                    speech_url = row.findAll("td")[-2].find("a").get_attribute_list("href")[0]
+                    speech_url = row.findAll(
+                        "td")[-2].find("a").get_attribute_list("href")[0]
                     yield parse(speech_date), speech_url
                 except IndexError:
                     continue
 
     def _speeches_per_politician_url(self, url):
-        soup = bs.BeautifulSoup(requests.get(url).content, features="html.parser")
+        soup = bs.BeautifulSoup(requests.get(
+            url).content, features="html.parser")
         for politician in soup.find('ul', {'class': "category-list"}).find_all("li"):
             for tag in politician:
                 if link := tag.get_attribute_list("href")[0]:
@@ -150,18 +163,21 @@ class PoliticiansScraper(Scraper):
 
     def scrape_politicians(self):
 
-        padding = lambda n: str(n).rjust(3, "0")
+        def padding(n): return str(n).rjust(3, "0")
 
         last_politician_number = self._find_last_politician_number()
-        self.main_log.info(f"Found {last_politician_number} politicians on the website. Scraping started...")
+        self.main_log.info(
+            f"Found {last_politician_number} politicians on the website. Scraping started...")
 
         with ThreadPoolExecutor() as executor:
             futures = [executor.submit(self._scrape_single_politician,
                                        url=self.root_url + rf'posel.xsp?id={padding(politician_number)}&type=A')
                        for politician_number in range(1, last_politician_number + 1)]
 
-        self.politicians += [thread.result() for thread in as_completed(futures)]
-        self.main_log.info(f"Scraping finished. Looking for additional politicians...")
+        self.politicians += [thread.result()
+                             for thread in as_completed(futures)]
+        self.main_log.info(
+            f"Scraping finished. Looking for additional politicians...")
 
         # Scrape additional politicians that doesn't exist on the website
         while True:
@@ -171,18 +187,22 @@ class PoliticiansScraper(Scraper):
                         self.root_url + rf'posel.xsp?id={padding(int(last_politician_number) + 1)}&type=A'))
             except StopIteration:
                 break
-            self.main_log.info(f"Found additional hidden politician: {self.politicians[-1]['name']}")
+            self.main_log.info(
+                f"Found additional hidden politician: {self.politicians[-1]['name']}")
             last_politician_number += 1
 
         if self.to_database:
-            insert_results = [dbutils.insert_politician_to_db(politician) for politician in self.politicians]
-            self.mongo_log.info(f"{sum(insert_results)} politicians inserted to database")
+            insert_results = [dbutils.insert_politician_to_db(
+                politician) for politician in self.politicians]
+            self.mongo_log.info(
+                f"{sum(insert_results)} politicians inserted to database")
 
     def _find_last_politician_number(self):
         web = requests.get(self.root_url + 'poslowie.xsp?type=A')
         soup = bs.BeautifulSoup(web.content, 'html.parser')
 
-        all_links = [line.get_attribute_list("href") for line in soup.findAll("a")]
+        all_links = [line.get_attribute_list(
+            "href") for line in soup.findAll("a")]
 
         pattern = re.compile(r"posel\.xsp\?id=(?P<number>\d{3})")
         for link in reversed(all_links):
@@ -196,19 +216,22 @@ class PoliticiansScraper(Scraper):
         web = requests.get(url)
         soup = bs.BeautifulSoup(web.content, 'html.parser')
 
-        politician_info["name"] = soup.find(id="title_content").find("h1").get_text()
+        politician_info["name"] = soup.find(
+            id="title_content").find("h1").get_text()
 
         if not politician_info["name"]:
             raise StopIteration("URL doesn't contain any politician data.")
 
-        self.main_log.debug(f"Scraping politician: {url[-10:-7]} - {politician_info['name']}")
+        self.main_log.debug(
+            f"Scraping politician: {url[-10:-7]} - {politician_info['name']}")
 
         features = list()
         values = list()
 
         for section in ["partia", "cv"]:
             for field in soup.find("div", {"class": section}).find("ul", {'class': "data"}):
-                features.append(field.find("p", {"class": "left"}).get_text()[:-1])  # Last sign is a ":"
+                features.append(field.find("p", {"class": "left"}).get_text()[
+                                :-1])  # Last sign is a ":"
                 values.append(field.find("p", {"class": "right"}).get_text())
 
         feature_map = {
@@ -227,12 +250,19 @@ class PoliticiansScraper(Scraper):
             'Wybrana dnia': "election_date",
             'Tytuł/stopień naukowy': 'academic_degree'}
 
-        features = map(lambda feature: feature_map.get(feature, feature), features)
+        features = map(lambda feature: feature_map.get(
+            feature, feature), features)
 
         politician_info.update(**dict(zip(features, values)))
 
+        # Add additional features: image url and politician url
+        politician_info["url"] = url
+        politician_info["img_url"] = soup.find(
+            "div", {'class': "partia"}).findChild("img").get("src")
+
         try:
-            politician_info["email"] = soup.find(id="PoselEmail").next_sibling()[0]["href"]
+            politician_info["email"] = soup.find(
+                id="PoselEmail").next_sibling()[0]["href"]
         except AttributeError:  # email is not available
             pass
 
@@ -254,7 +284,8 @@ class PoliticiansScraper(Scraper):
             date_of_birth, place_of_birth = value.split(", ")
             politician_dict['place_of_birth'] = place_of_birth
             politician_dict['date_of_birth'] = parse(date_of_birth)
-            politician_dict['age'] = (datetime.now() - politician_dict['date_of_birth']).days // 365
+            politician_dict['age'] = (
+                datetime.now() - politician_dict['date_of_birth']).days // 365
 
         def assemble_email(value):
 
@@ -276,7 +307,8 @@ class PoliticiansScraper(Scraper):
                 for key, val in encoding_problems.items():
                     value = value.replace(key, val)
 
-            politician_dict['sex'] = "woman" if value.split(" ")[0].endswith("a") else "man"
+            politician_dict['sex'] = "woman" if value.split(
+                " ")[0].endswith("a") else "man"
 
             return value
 
@@ -294,7 +326,8 @@ class PoliticiansScraper(Scraper):
             'name': work_with_name
         }
 
-        for feature, value in list(politician_dict.items()):  # We are changing the dictionary while looping
+        # We are changing the dictionary while looping
+        for feature, value in list(politician_dict.items()):
             try:
                 politician_dict[feature] = transform[feature](value)
             except KeyError:
@@ -310,4 +343,5 @@ class PoliticiansScraper(Scraper):
 if __name__ == '__main__':
     from main import main
 
-    main(["scrape", "politicians", '-l', 'debug', '-s', 'government_n', '8', '-s', 'to_database', 'True'])
+    main(["scrape", "politicians", '-l', 'debug', '-s',
+          'government_n', '8', '-s', 'to_database', 'True'])

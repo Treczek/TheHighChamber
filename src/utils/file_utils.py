@@ -24,19 +24,20 @@ def get_project_structure():
     """
     p = pathlib.Path.cwd()
 
-    if p.name == "src":
-        root = p.parent
-    elif "src" in [path.name for path in p.iterdir()]:
-        root = p
-    else:
-        while p.name != "src":
+    root = None
+    while not root:
+        if p.name == "src":
+            root = p.parent
+        elif "src" in [path.name for path in p.iterdir()]:
+            root = p
+        else:
             p = p.parent
-        root = p.parent
 
     project_structure = dict(root=root,
                              source=root.joinpath("src"),
                              backup=root.joinpath("backup"),
-                             log_folder=root.joinpath("logs"))
+                             log_folder=root.joinpath("logs"),
+                             test_folder=root.joinpath("test_unit"))
 
     for path in project_structure.values():
         path.mkdir(parents=True, exist_ok=True)

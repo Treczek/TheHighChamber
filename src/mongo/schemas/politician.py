@@ -31,6 +31,9 @@ class Politician(me.Document):
 
     email = me.EmailField()
 
+    url = me.URLField()
+    img_url = me.URLField()
+
     speeches = me.EmbeddedDocumentListField(Speech)
 
     meta = {
