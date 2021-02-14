@@ -3,7 +3,7 @@ import pickle
 import numpy as np
 
 from src.utils.file_utils import get_project_structure
-from src.text_transformers import Tokenizer, BracketFinder
+from src.text import Tokenizer, BracketFinder
 
 
 @pytest.fixture()

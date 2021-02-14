@@ -57,7 +57,8 @@ def main(command_line=None):
         scraper_args = {'government_n': 9,
                         'to_database': True,
                         'name_filter': None,
-                        'only_new': True}
+                        'only_new': True,
+                        'with_processing': True}
 
         if args.scraper_arg:
             passed_scraper_args = {arg: literal_eval(value) for arg, value in args.scraper_arg}
@@ -71,8 +72,9 @@ def main(command_line=None):
             ss = SpeechesScraper(**scraper_args)
             ss.scrape_politician_speeches()
 
+
     if args.which == "data_preparation":
-        extract_speech_details(only_new=args.recreate_all)
+        raise NotImplemented
 
 
 if __name__ == '__main__':

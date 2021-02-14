@@ -44,7 +44,7 @@ class SpeechesScraper(Scraper):
     Scraper that crawl through all politician speeches urls and extracts text from stenograms.
     """
 
-    def __init__(self, government_n, to_database, only_new=True, name_filter=None):
+    def __init__(self, government_n, to_database, only_new=True, name_filter=None, with_processing=True):
         super().__init__(government_n, to_database)
 
         self.only_new = only_new
