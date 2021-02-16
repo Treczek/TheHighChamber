@@ -4,7 +4,8 @@
 def swap_name_with_surname(full_name):
 
     exceptions = {
-        "Szynkowski vel Sęk Szymon": "Szymon Szynkowski vel Sęk"
+        "Szynkowski vel Sęk Szymon": "Szymon Szynkowski vel Sęk",
+        "Szymon Szynkowski vel Sęk": "Szymon Szynkowski vel Sęk"
     }
 
     if full_name in (in_keys := exceptions.keys()) or full_name in exceptions.values():

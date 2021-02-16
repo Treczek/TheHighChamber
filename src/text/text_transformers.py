@@ -83,7 +83,7 @@ class Tokenizer:
         doc = corpus.nlp(speech['raw_text'])
 
         for field, value in [('speech_details', Tokenizer.tokenize_speech(spacy_document=doc)),
-                             ('speech_vector', doc.vector),
+                             ('speech_vector', doc.vector.round(2).tolist()),
                              ('sentences', list(doc.sents))]:
             speech[field] = value
 
@@ -105,7 +105,6 @@ class Tokenizer:
                          ('dep', spacy_token.dep_),
                          ('is_ent', bool(spacy_token.ent_type_)),
                          ('ent_label', spacy_token.ent_type_),
-                         ('word_vector', spacy_token.vector),
                          ('is_numerical', bool(re.search(r'.*?\d.*', spacy_token.text)))])
 
         speech_details = [create_dict_with_word_details(ix, token) for ix, token in enumerate(spacy_document)]
@@ -138,7 +137,6 @@ class SpeechAnalyzer:
                   .index
                   .tolist())
 
-        print(ngrams)
         return ngrams
 
     def find_stop_words(self, threshold: float):
@@ -156,7 +154,6 @@ class SpeechAnalyzer:
                       > threshold)
 
         result = stop_words[stop_words].index
-        print(result)
         return result
 
 

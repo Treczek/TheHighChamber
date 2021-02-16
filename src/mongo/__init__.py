@@ -1,1 +1,1 @@
-from .schemas import Politician, Speech
+from .mongo_manager import MongoManager

@@ -2,21 +2,21 @@ import argparse
 import logging
 from logging import config
 from src.scraping.scraping import PoliticiansScraper, SpeechesScraper
-from src.text_processing.tokenizer import extract_speech_details
-import src.mongo.mongo_setup as mongo_setup
 from ast import literal_eval
-from src.utils import get_project_structure
+from src.utils import get_project_structure, Pipe
+from src.text import Tokenizer, BracketFinder
+from src.mongo import MongoManager
 
 STRUCTURE = get_project_structure()
 
 
 def main(command_line=None):
+
     # Load logging configuration
     logging.config.fileConfig(STRUCTURE['root'].joinpath("logging.ini"),
                               defaults={'logfilename': str(STRUCTURE["log_folder"])})
 
-    # Connecting to database
-    mongo_setup.global_init()
+    db = MongoManager()
 
     parser = argparse.ArgumentParser(command_line)
     subparsers = parser.add_subparsers()
@@ -26,18 +26,11 @@ def main(command_line=None):
 
     scrape_parser.add_argument('action', help="politicians / speeches / all")
     scrape_parser.add_argument('-s', '--scraper_arg', required=False, nargs=2, action='append',
-                               help='argument for the scraper class. You can change the government cadence number '
-                                    '[government_n], and local_backup boolean flag')
+                               help='argument for the scraper class.')
 
     scrape_parser.set_defaults(which="scrape")
 
-    data_preparation_parser = subparsers.add_parser("data_preparation", help="Extracting various features from scraped"
-                                                                             "speeches including embeddings and token"
-                                                                             "details.")
-    data_preparation_parser.set_defaults(which="data_preparation")
-    data_preparation_parser.add_argument("--recreate_all", action="store_true")
-
-    for subparser in [scrape_parser, data_preparation_parser]:
+    for subparser in [scrape_parser]:
         getattr(subparser, 'add_argument')('-l', '--logging',
                                            choices=['debug', 'info', 'warning', 'error', 'critical'],
                                            default='info',
@@ -55,10 +48,8 @@ def main(command_line=None):
     if args.which == "scrape":
 
         scraper_args = {'government_n': 9,
-                        'to_database': True,
                         'name_filter': None,
-                        'only_new': True,
-                        'with_processing': True}
+                        'only_new': True}
 
         if args.scraper_arg:
             passed_scraper_args = {arg: literal_eval(value) for arg, value in args.scraper_arg}
@@ -66,15 +57,18 @@ def main(command_line=None):
 
         if args.action == "politicians" or args.action == "all":
             ps = PoliticiansScraper(**scraper_args)
-            ps.scrape_politicians()
+            db.insert_politicians(ps.scrape())
 
         if args.action == "speeches" or args.action == "all":
-            ss = SpeechesScraper(**scraper_args)
-            ss.scrape_politician_speeches()
 
+            pipe = Pipe(
+                [Tokenizer,
+                 BracketFinder]
+            )
 
-    if args.which == "data_preparation":
-        raise NotImplemented
+            db.insert_speeches(
+                pipe(SpeechesScraper(**scraper_args).scrape())
+            )
 
 
 if __name__ == '__main__':
