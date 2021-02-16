@@ -8,9 +8,8 @@ import spacy
 import logging
 import re
 import pandas as pd
+from functools import partial
 from sklearn.feature_extraction.text import CountVectorizer
-
-from src.text import build_lemmatizated_speech_with_politician_id
 
 
 class LanguageCorpus:
@@ -24,13 +23,18 @@ class LanguageCorpus:
         self.ngrams = {'wysoki izba', 'prawo sprawiedliwość', 'unia europejski', 'ochrona zdrowie', 'finanse publiczny',
                        'koalicja obywatelski', 'trybunał konstytucyjny', 'andrzej duda', 'komisja europejski'}
 
-        self.stopwords = ('pani', 'być', 'marszałek', 'ten', 'to', 'na', 'nie', 'wysoki', 'się',
-                          'który', 'że', 'do', 'dziękować', 'izba', 'mieć', 'bardzo', 'oklask',
-                          'on', 'jak', 'czy', 'co', 'dzwonko', 'państwo')
+        self.stopwords = {'ustawa', 'projekt', 'zmiana', 'poprawka', 'druk', 'przyjęcie', 'zapis', 'komisja',
+                          'pani', 'być', 'marszałek', 'ten', 'to', 'na', 'nie', 'się', "poseł", "minister",
+                          'który', 'że', 'do', 'dziękować', 'mieć', 'bardzo', 'oklask', "móc", "sejm",
+                          'on', 'jak', 'czy', 'co', 'dzwonko', 'państwo', "wysoki_izba", "wysoki", "izba",
+                          "poprawka", "zmiana", 'czytanie', 'przepis', 'posiedzenie', 'wniosek',
+                          'uwaga', 'kwestia', 'strona', 'informacja', 'sprawa', "wicemarszałek",
+                          "prosić", "powiedzieć", "chcieć", "mówić", "myślić", "chodzić", "rozwiązanie", "rząd",
+                          "premiera", "czas", "cel", "zakres", "rok", "działanie", "rada"}
 
     def __get__(self, instance, cls):
         if instance is None:
-            return None
+            return self
 
         if self.nlp:
             return self.nlp
@@ -115,9 +119,13 @@ class SpeechAnalyzer:
         if 'speech_details' not in speeches:
             speeches = Tokenizer.transform(speeches)
 
-        self.text_table = pd.DataFrame(
-            data=list(map(build_lemmatizated_speech_with_politician_id, speeches)),
-            columns=["politician", "text"])
+        speech_transformation = partial(SpeechTransformer.transform,
+                                        build_with="lemma",
+                                        exclude_flags=["is_punct", "is_numerical"],
+                                        include_params=["politician_id"])
+
+        self.text_table = pd.DataFrame(data=list(map(speech_transformation, speeches)),
+                                       columns=["politician", "text"])
 
     def find_n_grams(self, n):
         cv = CountVectorizer(ngram_range=(n, n))
@@ -178,6 +186,32 @@ class BracketFinder:
                 in_brackets = False
 
         return speech_details
+
+
+class SpeechTransformer:
+
+    @staticmethod
+    def transform(speech, build_with, allowed_pos=None, exclude_flags=None, include_params=None):
+
+        def verify_if_should_be_excluded(word_dict, allowed_pos, exclude_flags):
+
+            if exclude_flags:
+                for flag in exclude_flags:
+                    if word_dict[flag]:
+                        return True
+
+            if allowed_pos and word_dict["pos"] not in allowed_pos:
+                return True
+
+            return False
+
+        result = []
+        for word in speech["speech_details"]:
+            if verify_if_should_be_excluded(word, allowed_pos, exclude_flags):
+                continue
+            result.append(word[build_with])
+
+        return (*[speech[param] for param in include_params], result) if include_params else result
 
 
 if __name__ == '__main__':
