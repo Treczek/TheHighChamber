@@ -1,5 +1,4 @@
 import mongoengine as me
-from .speech import Speech
 from hashlib import blake2b
 
 
@@ -34,7 +33,7 @@ class Politician(me.Document):
     url = me.URLField()
     img_url = me.URLField()
 
-    speeches = me.EmbeddedDocumentListField(Speech)
+    speeches = me.ListField()
 
     meta = {
         'db_alias': 'core',

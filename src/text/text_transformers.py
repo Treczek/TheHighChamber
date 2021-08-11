@@ -40,7 +40,7 @@ class LanguageCorpus:
             return self.nlp
         else:
             self.load_model()
-            self.update_stop_words()
+            self.nlp.Defaults.stop_words |= self.stopwords
             return self.nlp
 
     def load_model(self):
@@ -50,11 +50,6 @@ class LanguageCorpus:
             logging.getLogger('main').error("Language model not found. Download it using console:"
                                             'python -m spacy download pl_core_news_lg')
             raise
-
-    def update_stop_words(self):
-        self.nlp.Defaults.stop_words |= self.stopwords
-
-        return corpus
 
 
 class SpacyCorpus:
@@ -190,25 +185,32 @@ class SpeechTransformer:
     @staticmethod
     def transform(speech, build_with, allowed_pos=None, exclude_flags=None, include_params=None):
 
+        def get_value(obj, attr_or_key):
+            if isinstance(obj, dict):
+                res = obj[attr_or_key]
+            else:
+                res = getattr(obj, attr_or_key)
+            return res
+
         def verify_if_should_be_excluded(word_dict, allowed_pos, exclude_flags):
 
             if exclude_flags:
                 for flag in exclude_flags:
-                    if word_dict[flag]:
+                    if get_value(word_dict, flag):
                         return True
 
-            if allowed_pos and word_dict["pos"] not in allowed_pos:
+            if allowed_pos and get_value(word_dict, "pos") not in allowed_pos:
                 return True
 
             return False
 
         result = []
-        for word in speech["speech_details"]:
+        for word in get_value(speech, "speech_details"):
             if verify_if_should_be_excluded(word, allowed_pos, exclude_flags):
                 continue
-            result.append(word[build_with])
+            result.append(get_value(word, build_with))
 
-        return (*[speech[param] for param in include_params], result) if include_params else result
+        return (*[get_value(speech, param) for param in include_params], result) if include_params else result
 
 
 if __name__ == '__main__':

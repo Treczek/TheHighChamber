@@ -2,7 +2,7 @@ import mongoengine as me
 from hashlib import blake2b
 
 
-class Speech(me.EmbeddedDocument):
+class Speech(me.Document):
 
     hash = me.StringField(required=True)
 
@@ -12,6 +12,11 @@ class Speech(me.EmbeddedDocument):
     date = me.DateTimeField()
     raw_text = me.StringField(required=True)
     speech_details = me.ListField()
+
+    meta = {
+        'db_alias': 'core',
+        'collection': 'speeches'
+    }
 
     def generate_id(self):
         bk = blake2b(digest_size=8)

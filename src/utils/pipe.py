@@ -5,7 +5,7 @@ Object that will handle sequential transformation of data
 
 class Pipe:
 
-    def __init__(self, list_of_transformers):
+    def __init__(self, list_of_transformers, ):
         assert all([hasattr(transformer, "transform")
                     for transformer in list_of_transformers])
         self.transformers = list_of_transformers

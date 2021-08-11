@@ -92,12 +92,12 @@ class MongoManager:
         for politician in politicians:
             self.insert_politician(politician)
 
-    @staticmethod
-    def insert_speech(speech: Speech):
+    def insert_speech(self, speech: Speech):
         p = Politician.objects(hash=speech.politician_id).first()
-        if p and speech.hash not in [db_speech["hash"] for db_speech in p.speeches]:
-            p.speeches.append(speech)
+        if not speech.hash not in p.speeches:
+            p.speeches.append(speech.hash)
             p.save()
+            speech.save()
             return True
         return False
 
@@ -105,6 +105,7 @@ class MongoManager:
 
         speeches_objs = [self.create_speech(speech) for speech in speeches]
         insert_results = [self.insert_speech(speech) for speech in speeches_objs]
+
         if any(insert_results):
             self.log.info(
                 f"Inserted {sum(insert_results)} speeches into db.")
@@ -113,58 +114,9 @@ class MongoManager:
     def get_last_speech_per_politician():
         result = list(Politician.objects().aggregate(
             [
-                {'$unwind': "$speeches"},
-                {'$group': {'_id': '$name', 'last_speech': {'$max': '$speeches.date'}}}
+                {'$group': {'_id': '$politician_name', 'last_speech': {'$max': '$date'}}}
             ]
         ))
 
         return {dct["_id"]: dct["last_speech"] for dct in result}
 
-    @staticmethod
-    def get_speeches(filter_query=None):
-
-        if filter_query is None:
-            filter_query = {}
-
-        result = list(Politician.objects().aggregate(
-            [
-                {'$match': filter_query},
-                {'$unwind': "$speeches"},
-                {'$project': {'speech_hash': '$speeches.hash',
-                              'name': '$name',
-                              'speech': '$speeches.raw_text'}}
-            ]
-        ))
-
-        return result
-
-    def update_speech(self, speech_hash, field_name, field_value, only_new):
-        """
-        This function can be used to find specific speech in the db and update it with the given value
-        Args:
-            speech_hash: hash which will be used to identify the speech
-            field_name: name of the speech field that will be changed
-            field_value: value for the given field. Type must be allowed by mongoDB
-        Returns: None. Updates the speech in the database
-        """
-
-        # Mongoengine struggles with the updating of nested documents. The easiest way would be to use exec_js method
-        # but it doesnt work with mongo > 4.0.
-        # We will use private method to grab the collection object and use pymongo instead.
-
-        politician = Politician._get_collection()
-
-        filter_query = \
-            {'speeches': {'$elemMatch': {'hash': speech_hash}}} \
-                if only_new \
-                else {'speeches': {'$elemMatch': {'hash': speech_hash, field_name: {'$exists': False}}}}
-
-        result = politician.update_one(
-            filter=filter_query,
-            update={"$set": {f"speeches.$[element].{field_name}": field_value}},
-            array_filters=[{'element.hash': speech_hash}])
-
-        if result.matched_count:
-            self.log.debug(f"Speech with hash: {speech_hash} updated on field {field_name}")
-        else:
-            self.log.debug(f"Speech with hash: {speech_hash} not found in the database")

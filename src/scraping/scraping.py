@@ -94,7 +94,7 @@ class SpeechesScraper(Scraper):
     def _extract_text_from_speech(self, url, repeat=True):
         soup = bs.BeautifulSoup(requests.get(url).content, features="html.parser")
 
-        # Cleaning function that will be used will looping through parts of speech
+        # Cleaning function that will be used while looping through parts of speech
         def cleen_text(speech_part):
             return speech_part.get_text(strip='\xa0').replace("\r\n", "")
 
